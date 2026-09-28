@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ultrasonic Radar Dashboard</title>
+  <style>
+    :root {
+      --bg: #09110d;
+      --panel: #0e1c16;
+      --grid: #24553b;
+      --line: #6cff9a;
+      --text: #d9ffe5;
+      --muted: #8eb89b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, Helvetica, sans-serif;
+      background: radial-gradient(circle at top, #10241b 0%, var(--bg) 60%);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .wrap {
+      width: min(980px, 100%);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.7rem, 4vw, 3rem);
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+    }
+
+    .card {
+      background: rgba(14, 28, 22, .9);
+      border: 1px solid rgba(108,255,154,.25);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 14px 50px rgba(0,0,0,.25);
+    }
+
+    .radar {
+      position: relative;
+      aspect-ratio: 2 / 1;
+      overflow: hidden;
+      border-radius: 220px 220px 20px 20px;
+      border-bottom: 2px solid var(--grid);
+      background:
+        radial-gradient(circle at 50% 100%,
+          transparent 0 24%,
+          rgba(36,85,59,.9) 25% 26%,
+          transparent 27% 49%,
+          rgba(36,85,59,.9) 50% 51%,
+          transparent 52% 74%,
+          rgba(36,85,59,.9) 75% 76%,
+          transparent 77%);
+    }
+
+    .radar::before,
+    .radar::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      width: 1px;
+      height: 100%;
+      background: var(--grid);
+      transform-origin: 50% 100%;
+    }
+
+    .radar::before { transform: rotate(-45deg); }
+    .radar::after { transform: rotate(45deg); }
+
+    .sweep {
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      width: 2px;
+      height: 95%;
+      background: linear-gradient(to top, var(--line), transparent);
+      box-shadow: 0 0 16px rgba(108,255,154,.65);
+      transform-origin: 50% 100%;
+      transition: transform .08s linear;
+    }
+
+    .dot {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--line);
+      box-shadow: 0 0 15px var(--line);
+      transform: translate(-50%, 50%);
+      transition: left .08s linear, bottom .08s linear;
+    }
+
+    .stats {
+      display: grid;
+      gap: 16px;
+    }
+
+    .metric {
+      padding: 18px;
+      border-radius: 16px;
+      border: 1px solid rgba(108,255,154,.16);
+      background: rgba(255,255,255,.02);
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: .9rem;
+      margin-bottom: 7px;
+    }
+
+    .value {
+      font-size: 2rem;
+      font-weight: 700;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ffd76c;
+    }
+
+    .connected .status-dot { background: var(--line); }
+
+    @media (max-width: 760px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>📡 Ultrasonic Radar Dashboard</h1>
+    <div class="subtitle">Real-time angle and distance visualization</div>
+
+    <section class="grid">
+      <div class="card">
+        <div id="radar" class="radar">
+          <div id="sweep" class="sweep"></div>
+          <div id="dot" class="dot"></div>
+        </div>
+      </div>
+
+      <div class="card stats">
+        <div class="metric">
+          <div class="label">Angle</div>
+          <div class="value"><span id="angle">--</span>°</div>
+        </div>
+
+        <div class="metric">
+          <div class="label">Distance</div>
+          <div class="value"><span id="distance">--</span> cm</div>
+        </div>
+
+        <div class="metric">
+          <div class="label">Status</div>
+          <div id="status" class="status">
+            <span class="status-dot"></span>
+            <span id="statusText">Loading…</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const angleEl = document.getElementById("angle");
+    const distanceEl = document.getElementById("distance");
+    const sweepEl = document.getElementById("sweep");
+    const dotEl = document.getElementById("dot");
+    const statusEl = document.getElementById("status");
+    const statusText = document.getElementById("statusText");
+
+    function updateRadar(angle, distance) {
+      angleEl.textContent = angle;
+      distanceEl.textContent = distance >= 0 ? distance : "No echo";
+
+      // 0° is left, 90° center, 180° right
+      const visualAngle = angle - 90;
+      sweepEl.style.transform = `rotate(${visualAngle}deg)`;
+
+      const maxDistance = 200;
+      const safeDistance = Math.max(0, Math.min(maxDistance, distance));
+      const radiusPct = 8 + (safeDistance / maxDistance) * 82;
+      const theta = angle * Math.PI / 180;
+
+      const x = 50 - Math.cos(theta) * radiusPct / 2;
+      const y = Math.sin(theta) * radiusPct;
+
+      dotEl.style.left = `${x}%`;
+      dotEl.style.bottom = `${y}%`;
+      dotEl.style.display = distance >= 0 ? "block" : "none";
+    }
+
+    async function refresh() {
+      try {
+        const response = await fetch("/api/data", { cache: "no-store" });
+        const data = await response.json();
+
+        updateRadar(data.angle, data.distance);
+
+        if (data.connected) {
+          statusEl.classList.add("connected");
+          statusText.textContent = "Arduino connected";
+        } else {
+          statusEl.classList.remove("connected");
+          statusText.textContent = "Demo mode";
+        }
+      } catch (e) {
+        statusEl.classList.remove("connected");
+        statusText.textContent = "Dashboard offline";
+      }
+    }
+
+    setInterval(refresh, 120);
+    refresh();
+  </script>
+</body>
+</html>
